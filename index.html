@@ -24,6 +24,8 @@
         .page-btn.active { background: #1890ff; color: white; border-color: #1890ff; }
         .page-btn:hover:not(.active) { background: #f0f0f0; }
         .toolbar { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; gap: 10px; align-items: center; }
+        .btn-refresh { padding: 8px 16px; background: #1890ff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .btn-refresh:hover { background: #40a9ff; }
         .toolbar .info { margin-left: auto; color: #666; font-size: 13px; }
         table { width: 100%; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-collapse: collapse; }
         th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #f0f0f0; }
@@ -62,6 +64,7 @@
         </div>
 
         <div class="toolbar">
+            <button class="btn-refresh" onclick="triggerRefresh()">🔄 立即检测</button>
             <span class="refresh" id="lastUpdate">最后更新: 加载中...</span>
             <span class="info">每30秒自动刷新</span>
         </div>
@@ -208,6 +211,13 @@
             currentFilter = filter;
             currentPage = 1;
             loadData();
+        }
+
+        function triggerRefresh() {
+            // 在线版不能直接触发检测，跳转到 GitHub Actions 页面
+            if (confirm('在线版需要跳转到 GitHub Actions 页面手动运行检测。\n\n点击确定前往 GitHub Actions 页面，然后点击 "Run workflow" 按钮运行一次检测。')) {
+                window.open('https://github.com/tovoovot55-png/alo-monitor/actions/workflows/monitor.yml', '_blank');
+            }
         }
 
         // 初始加载
