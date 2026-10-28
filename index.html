@@ -235,10 +235,12 @@
         }
 
         function triggerRefresh() {
-            // 在线版不能直接触发检测，跳转到 GitHub Actions 页面
-            if (confirm('在线版需要跳转到 GitHub Actions 页面手动运行检测。\n\n点击确定前往 GitHub Actions 页面，然后点击 "Run workflow" 按钮运行一次检测。')) {
-                window.open('https://github.com/tovoovot55-png/alo-monitor/actions/workflows/monitor.yml', '_blank');
-            }
+            // 先刷新当前页面数据
+            loadData();
+            // 同时打开 GitHub Actions 页面触发检测
+            window.open('https://github.com/tovoovot55-png/alo-monitor/actions/workflows/monitor.yml', '_blank');
+            // 提示用户
+            alert('已刷新页面！\n\n已在新标签页打开 GitHub Actions 页面，请点击 "Run workflow" 按钮运行检测。');
         }
 
         function showAddModal() {
