@@ -10,13 +10,19 @@
         .container { max-width: 1200px; margin: 0 auto; }
         h1 { color: #333; margin-bottom: 20px; text-align: center; }
         .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
-        .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08); cursor: pointer; transition: transform 0.1s; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+        .stat-card.active { outline: 3px solid #1890ff; }
         .stat-card .num { font-size: 32px; font-weight: bold; margin-bottom: 5px; }
         .stat-card .label { color: #666; font-size: 14px; }
         .stat-total .num { color: #333; }
         .stat-success .num { color: #52c41a; }
         .stat-fail .num { color: #f5222d; }
         .stat-pending .num { color: #8c8c8c; }
+        .pagination { display: flex; gap: 8px; justify-content: center; margin-top: 15px; }
+        .page-btn { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #333; background: white; cursor: pointer; }
+        .page-btn.active { background: #1890ff; color: white; border-color: #1890ff; }
+        .page-btn:hover:not(.active) { background: #f0f0f0; }
         .toolbar { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; gap: 10px; align-items: center; }
         .toolbar .info { margin-left: auto; color: #666; font-size: 13px; }
         table { width: 100%; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-collapse: collapse; }
@@ -37,19 +43,19 @@
         <h1>📊 Alo Yoga 邮件监控面板</h1>
 
         <div class="stats">
-            <div class="stat-card stat-total">
+            <div class="stat-card stat-total" onclick="setFilter('all')">
                 <div class="num" id="total">—</div>
                 <div class="label">总邮箱数</div>
             </div>
-            <div class="stat-card stat-success">
+            <div class="stat-card stat-success" onclick="setFilter('success')">
                 <div class="num" id="success">—</div>
                 <div class="label">✅ 成功</div>
             </div>
-            <div class="stat-card stat-fail">
+            <div class="stat-card stat-fail" onclick="setFilter('fail')">
                 <div class="num" id="fail">—</div>
                 <div class="label">❌ 失败</div>
             </div>
-            <div class="stat-card stat-pending">
+            <div class="stat-card stat-pending" onclick="setFilter('pending')">
                 <div class="num" id="pending">—</div>
                 <div class="label">⏳ 待监控</div>
             </div>
@@ -68,12 +74,14 @@
                 <tr><td colspan="5" class="loading">加载中...</td></tr>
             </tbody>
         </table>
+
+        <div class="pagination" id="pagination"></div>
     </div>
 
     <script>
-        // 邮箱列表（从 EMAIL_LIST secret 读取的是运行时的，这里我们从 state.json 读取状态）
-        // 我们需要把邮箱列表也存到一个文件里，或者直接硬编码？
-        // 更好的方案：把邮箱列表也存成一个 JSON 文件，每次运行时更新
+        let currentPage = 1;
+        let currentFilter = 'all';
+        const PAGE_SIZE = 10;
 
         async function loadData() {
             try {
@@ -103,22 +111,42 @@
                 document.getElementById('pending').textContent = pendingCount;
                 document.getElementById('lastUpdate').textContent = '最后更新: ' + (state.last_check || '从未运行');
 
+                // 更新统计卡片高亮
+                document.querySelectorAll('.stat-card').forEach(card => card.classList.remove('active'));
+                document.querySelector(`.stat-${currentFilter}`).classList.add('active');
+
+                // 筛选和排序
+                const sorted = [];
+                for (const email of emailList) {
+                    const addr = email.email;
+                    const s = completed[addr];
+                    const result = s ? s.result : 'pending';
+                    
+                    // 筛选
+                    if (currentFilter !== 'all' && result !== currentFilter) continue;
+
+                    sorted.push({ email, state: s, result });
+                }
+
+                // 排序：成功、失败、待监控
+                sorted.sort((a, b) => {
+                    const order = { success: 0, fail: 1, pending: 2 };
+                    return order[a.result] - order[b.result];
+                });
+
+                // 分页
+                const totalFiltered = sorted.length;
+                const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+                currentPage = Math.min(currentPage, totalPages);
+                const start = (currentPage - 1) * PAGE_SIZE;
+                const end = start + PAGE_SIZE;
+                const pageItems = sorted.slice(start, end);
+
                 // 渲染表格
                 const tbody = document.getElementById('emailList');
                 tbody.innerHTML = '';
 
-                // 排序：成功、失败、待监控
-                const sorted = [];
-                for (const email of emailList) {
-                    const addr = email.email;
-                    if (completed[addr]) {
-                        sorted.unshift({ email, state: completed[addr] });
-                    } else {
-                        sorted.push({ email, state: null });
-                    }
-                }
-
-                for (const item of sorted) {
+                for (const item of pageItems) {
                     const email = item.email;
                     const s = item.state;
                     let rowClass, status, timeStr, detail;
@@ -150,9 +178,35 @@
                         </tr>
                     `;
                 }
+
+                // 渲染分页
+                const paginationDiv = document.getElementById('pagination');
+                paginationDiv.innerHTML = '';
+                if (totalPages > 1) {
+                    if (currentPage > 1) {
+                        paginationDiv.innerHTML += `<button class="page-btn" onclick="changePage(${currentPage - 1})">上一页</button>`;
+                    }
+                    for (let p = 1; p <= totalPages; p++) {
+                        paginationDiv.innerHTML += `<button class="page-btn ${p === currentPage ? 'active' : ''}" onclick="changePage(${p})">${p}</button>`;
+                    }
+                    if (currentPage < totalPages) {
+                        paginationDiv.innerHTML += `<button class="page-btn" onclick="changePage(${currentPage + 1})">下一页</button>`;
+                    }
+                }
             } catch (e) {
                 document.getElementById('emailList').innerHTML = '<tr><td colspan="5" class="loading">加载失败: ' + e.message + '</td></tr>';
             }
+        }
+
+        function changePage(page) {
+            currentPage = page;
+            loadData();
+        }
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            currentPage = 1;
+            loadData();
         }
 
         // 初始加载
