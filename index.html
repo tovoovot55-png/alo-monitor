@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alo Yoga 邮件监控面板</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Microsoft YaHei", sans-serif; background: #f5f7fa; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #333; margin-bottom: 20px; text-align: center; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
+        .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .stat-card .num { font-size: 32px; font-weight: bold; margin-bottom: 5px; }
+        .stat-card .label { color: #666; font-size: 14px; }
+        .stat-total .num { color: #333; }
+        .stat-success .num { color: #52c41a; }
+        .stat-fail .num { color: #f5222d; }
+        .stat-pending .num { color: #8c8c8c; }
+        .toolbar { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; gap: 10px; align-items: center; }
+        .toolbar .info { margin-left: auto; color: #666; font-size: 13px; }
+        table { width: 100%; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-collapse: collapse; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+        th { background: #fafafa; font-weight: 600; color: #333; }
+        tr:hover { background: #fafafa; }
+        tr.success { background: #f6ffed; }
+        tr.fail { background: #fff2f0; }
+        tr.pending { background: #fafafa; }
+        .status { font-weight: 600; }
+        .detail { color: #666; font-size: 13px; }
+        .loading { text-align: center; padding: 50px; color: #999; }
+        .refresh { font-size: 12px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Alo Yoga 邮件监控面板</h1>
+
+        <div class="stats">
+            <div class="stat-card stat-total">
+                <div class="num" id="total">—</div>
+                <div class="label">总邮箱数</div>
+            </div>
+            <div class="stat-card stat-success">
+                <div class="num" id="success">—</div>
+                <div class="label">✅ 成功</div>
+            </div>
+            <div class="stat-card stat-fail">
+                <div class="num" id="fail">—</div>
+                <div class="label">❌ 失败</div>
+            </div>
+            <div class="stat-card stat-pending">
+                <div class="num" id="pending">—</div>
+                <div class="label">⏳ 待监控</div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <span class="refresh" id="lastUpdate">最后更新: 加载中...</span>
+            <span class="info">每30秒自动刷新</span>
+        </div>
+
+        <table>
+            <thead>
+                <tr><th>邮箱地址</th><th>状态</th><th>分组</th><th>检测时间</th><th>详情</th></tr>
+            </thead>
+            <tbody id="emailList">
+                <tr><td colspan="5" class="loading">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // 邮箱列表（从 EMAIL_LIST secret 读取的是运行时的，这里我们从 state.json 读取状态）
+        // 我们需要把邮箱列表也存到一个文件里，或者直接硬编码？
+        // 更好的方案：把邮箱列表也存成一个 JSON 文件，每次运行时更新
+
+        async function loadData() {
+            try {
+                // 读取状态文件
+                const stateRes = await fetch('state.json');
+                const state = await stateRes.json();
+
+                // 读取邮箱列表文件
+                const listRes = await fetch('email_list.json');
+                const emailList = await listRes.json();
+
+                // 统计
+                const total = emailList.length;
+                const completed = state.completed || {};
+                let successCount = 0;
+                let failCount = 0;
+
+                for (const key in completed) {
+                    if (completed[key].result === 'success') successCount++;
+                    if (completed[key].result === 'fail') failCount++;
+                }
+                const pendingCount = total - successCount - failCount;
+
+                document.getElementById('total').textContent = total;
+                document.getElementById('success').textContent = successCount;
+                document.getElementById('fail').textContent = failCount;
+                document.getElementById('pending').textContent = pendingCount;
+                document.getElementById('lastUpdate').textContent = '最后更新: ' + (state.last_check || '从未运行');
+
+                // 渲染表格
+                const tbody = document.getElementById('emailList');
+                tbody.innerHTML = '';
+
+                // 排序：成功、失败、待监控
+                const sorted = [];
+                for (const email of emailList) {
+                    const addr = email.email;
+                    if (completed[addr]) {
+                        sorted.unshift({ email, state: completed[addr] });
+                    } else {
+                        sorted.push({ email, state: null });
+                    }
+                }
+
+                for (const item of sorted) {
+                    const email = item.email;
+                    const s = item.state;
+                    let rowClass, status, timeStr, detail;
+
+                    if (s) {
+                        if (s.result === 'success') {
+                            rowClass = 'success';
+                            status = '✅ 成功';
+                        } else {
+                            rowClass = 'fail';
+                            status = '❌ 失败';
+                        }
+                        timeStr = s.time || '';
+                        detail = s.detail || '';
+                    } else {
+                        rowClass = 'pending';
+                        status = '⏳ 待监控';
+                        timeStr = '';
+                        detail = '';
+                    }
+
+                    tbody.innerHTML += `
+                        <tr class="${rowClass}">
+                            <td>${email.email}</td>
+                            <td class="status">${status}</td>
+                            <td>${email.group || ''}</td>
+                            <td>${timeStr}</td>
+                            <td class="detail">${detail}</td>
+                        </tr>
+                    `;
+                }
+            } catch (e) {
+                document.getElementById('emailList').innerHTML = '<tr><td colspan="5" class="loading">加载失败: ' + e.message + '</td></tr>';
+            }
+        }
+
+        // 初始加载
+        loadData();
+        // 每30秒刷新
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>
