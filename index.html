@@ -65,8 +65,29 @@
 
         <div class="toolbar">
             <button class="btn-refresh" onclick="triggerRefresh()">🔄 立即检测</button>
+            <button class="btn-refresh" style="background:#52c41a" onclick="showAddModal()">➕ 添加邮箱</button>
             <span class="refresh" id="lastUpdate">最后更新: 加载中...</span>
             <span class="info">每30秒自动刷新</span>
+        </div>
+
+        <!-- 添加邮箱模态框 -->
+        <div id="addModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;">
+            <div style="background:white; padding:25px; border-radius:10px; width:90%; max-width:600px; max-height:80vh; overflow-y:auto;">
+                <h3 style="margin-bottom:15px;">➕ 批量添加邮箱</h3>
+                <p style="color:#666; font-size:13px; margin-bottom:10px;">粘贴一长串邮箱信息（格式：邮箱----密码----client_id----refresh_token----分组）：</p>
+                <textarea id="addTextarea" style="width:100%; height:200px; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:13px; font-family:monospace;" placeholder="每行一个邮箱..."></textarea>
+                <div style="margin-top:15px; display:flex; gap:10px; justify-content:flex-end;">
+                    <button class="btn-refresh" style="background:#999" onclick="hideAddModal()">取消</button>
+                    <button class="btn-refresh" onclick="parseEmails()">解析并预览</button>
+                </div>
+                <div id="previewResult" style="margin-top:15px; display:none;">
+                    <h4 style="margin-bottom:10px;">解析结果：</h4>
+                    <div id="previewContent" style="background:#f5f5f5; padding:10px; border-radius:6px; font-size:13px; max-height:200px; overflow-y:auto;"></div>
+                    <div style="margin-top:10px; display:flex; gap:10px; justify-content:flex-end;">
+                        <button class="btn-refresh" onclick="copyResult()">复制 JSON</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <table>
@@ -218,6 +239,62 @@
             if (confirm('在线版需要跳转到 GitHub Actions 页面手动运行检测。\n\n点击确定前往 GitHub Actions 页面，然后点击 "Run workflow" 按钮运行一次检测。')) {
                 window.open('https://github.com/tovoovot55-png/alo-monitor/actions/workflows/monitor.yml', '_blank');
             }
+        }
+
+        function showAddModal() {
+            document.getElementById('addModal').style.display = 'flex';
+            document.getElementById('previewResult').style.display = 'none';
+        }
+
+        function hideAddModal() {
+            document.getElementById('addModal').style.display = 'none';
+            document.getElementById('addTextarea').value = '';
+            document.getElementById('previewResult').style.display = 'none';
+        }
+
+        function parseEmails() {
+            const text = document.getElementById('addTextarea').value.trim();
+            if (!text) {
+                alert('请先粘贴邮箱信息！');
+                return;
+            }
+
+            const lines = text.split('\n');
+            const emails = [];
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                const parts = trimmed.split('----');
+                if (parts.length >= 6) {
+                    emails.push({
+                        email: parts[0].trim(),
+                        group: parts[5].trim()
+                    });
+                }
+            }
+
+            if (emails.length === 0) {
+                alert('没有解析到有效的邮箱！请检查格式是否正确。');
+                return;
+            }
+
+            const json = JSON.stringify(emails, null, 2);
+            document.getElementById('previewContent').textContent = `解析到 ${emails.length} 个邮箱：\n\n${json}`;
+            document.getElementById('previewResult').style.display = 'block';
+
+            // 保存到全局变量
+            window.parsedEmails = emails;
+        }
+
+        function copyResult() {
+            if (!window.parsedEmails) {
+                alert('请先解析邮箱！');
+                return;
+            }
+            const json = JSON.stringify(window.parsedEmails, null, 2);
+            navigator.clipboard.writeText(json).then(() => {
+                alert('已复制！\n\n现在你可以去 GitHub 上传这个 email_list.json 文件了。');
+            });
         }
 
         // 初始加载
