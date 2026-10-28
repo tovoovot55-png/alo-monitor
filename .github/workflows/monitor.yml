@@ -9,9 +9,31 @@ on:
 jobs:
   monitor:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+
+      - name: 生成邮箱列表 JSON
+        env:
+          EMAIL_LIST: ${{ secrets.EMAIL_LIST }}
+        run: |
+          # 把邮箱列表转成 JSON 文件，供面板读取
+          python3 -c "
+import os, json
+lines = os.environ.get('EMAIL_LIST', '').strip().split('\\n')
+emails = []
+for line in lines:
+    line = line.strip()
+    if not line: continue
+    parts = line.split('----')
+    if len(parts) >= 5:
+        emails.append({'email': parts[0].strip(), 'group': parts[4].strip()})
+with open('email_list.json', 'w', encoding='utf-8') as f:
+    json.dump(emails, f, ensure_ascii=False, indent=2)
+print(f'生成了 {len(emails)} 个邮箱')
+"
 
       - name: 运行监控脚本
         env:
@@ -34,10 +56,10 @@ jobs:
           echo "$NEW_STATE" > state.json
           cat state.json
 
-      - name: 提交更新后的状态
+      - name: 提交更新后的文件
         run: |
           git config --local user.email "monitor-bot@users.noreply.github.com"
           git config --local user.name "monitor-bot"
-          git add state.json
+          git add state.json email_list.json
           git diff --staged --quiet || git commit -m "更新监控状态 [skip ci]"
           git push
